@@ -6,6 +6,5 @@ This project demonstrates a simple 2D Smoothed Particle Hydrodynamics (SPH) simu
 
 - GPU-accelerated particle simulation.
 - Real-time visualization of particle movements.
-- Adjustable simulation parameters such as smoothing radius, gravity, and target density.
 - Multi-pass computation for accurate particle interaction.
 
