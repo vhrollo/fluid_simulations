@@ -48,12 +48,12 @@ impl<'a> OtherLogic for State<'a>{
         self.queue.write_buffer(&self.density_pipeline.smoothing_buffer, 0, bytemuck::cast_slice(&[self.water_simulation.smoothing_radius]));
 
         self.queue.write_buffer(&self.water_simulation.num_particles_buffer, 0, bytemuck::cast_slice(&[self.water_simulation.num_particles as u32]));
-        self.queue.write_buffer(&self.delta_time_buffer, 0, bytemuck::cast_slice(&[delta_time.as_secs_f32()]));
-        
+        self.queue.write_buffer(&self.delta_time_buffer, 0, bytemuck::cast_slice(&[delta_time.as_secs_f32()]));        
         if !self.paused {
             // self.water_simulation.update(delta_time);
             //self.water_simulation.update_in_parrallel(delta_time);
             // self.updateeparticle_vertex_data();
+            println!("update{}", self.water_simulation.num_particles);
             match self.compute() {
                 Ok(_) => {}
                 Err(e) => {

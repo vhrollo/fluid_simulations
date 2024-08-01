@@ -1,5 +1,4 @@
 use wgpu::util::DeviceExt;
-use winit::dpi::Position;
 use std::time::{Duration, Instant};
 use crate::utils::{console_logger::ConsoleLogger, fps::FpsTracker};
 use crate::simulation::{bounding_box::BoundingBox, simulation::{WaterSimulation, ParticleLl, PositionLl, VelocityLl, DensityLl}};
@@ -13,6 +12,7 @@ use super::managers::{texture_manager::TextureManager, pipeline_manager::Pipelin
 use super::shader_helper;
 use fluid_simulations::{VERTICESIMG, INDICES, VertexImg};
 use super::plane_state::{density_visualizer::DensityVisualizer, smoothing_ring::SmoothingPipeline};
+use crate::simulation::grid::{Grid, Constants};
 
 use winit::{
     event::WindowEvent,
@@ -72,9 +72,16 @@ pub struct State<'a> {
     pub predict_position_pipeline: wgpu::ComputePipeline,
     pub calculate_density_pipeline: wgpu::ComputePipeline,
     pub update_position_pipeline: wgpu::ComputePipeline,
+    pub update_spatial_hash_pipeline: wgpu::ComputePipeline,
+    pub sort_pipeline: wgpu::ComputePipeline,
+    pub indecies_pipeline: wgpu::ComputePipeline,
+    pub reset_indecies_pipeline: wgpu::ComputePipeline,
+
     pub settings_bind_group: wgpu::BindGroup,
     pub pressure_visualizer: pressure_visualizer::PressureVisualizer,
     pub delta_time_buffer: wgpu::Buffer,
+
+    pub grid: Grid,
 }
 
 impl <'a> State <'a> {
@@ -103,8 +110,12 @@ impl <'a> State <'a> {
         let (device, queue) = adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("main device"),
-                required_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
-                required_limits: wgpu::Limits::default(),
+                required_features: wgpu::Features::VERTEX_WRITABLE_STORAGE | 
+                                    wgpu::Features::PUSH_CONSTANTS,
+                required_limits: wgpu::Limits{
+                    max_push_constant_size: 12,
+                    ..wgpu::Limits::default()
+                },
             },
             None,
         ).await.expect("device request");
@@ -359,8 +370,6 @@ impl <'a> State <'a> {
             }
         );
 
-
-
         let bounding_box = BoundingBox::new(
             cgmath::vec2(0.0, 0.0),
             cgmath::vec2(water_simulation.bound_size[0], water_simulation.bound_size[1]),
@@ -371,8 +380,7 @@ impl <'a> State <'a> {
 
 
 
-        water_simulation.add_multiple_random_particles(1000, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
-
+        water_simulation.add_multiple_random_particles(5, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
 
 
         let particle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -467,6 +475,12 @@ impl <'a> State <'a> {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let max_particles_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Max Particles Buffer"),
+            contents: bytemuck::cast_slice(&[water_simulation.max_particles as u32]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
         let settings_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -509,6 +523,16 @@ impl <'a> State <'a> {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 4,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: Some("settings_bind_layout"),
         });
@@ -532,18 +556,39 @@ impl <'a> State <'a> {
                     binding: 3,
                     resource: delta_time_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: max_particles_buffer.as_entire_binding(),
+                },
             ],
             label: Some("settings_bind_group"),
         });
-
+        
+        let grid = Grid::new(&device, &queue, water_simulation.max_particles);
 
         let compute_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Simulation Pipeline Layout"),
             bind_group_layouts: &[
                 &particale_bind_layout,
                 &settings_bind_layout,
+                &grid.grid_bind_layout,
             ],
             push_constant_ranges: &[],
+        });
+
+        let gpu_sort_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("GPU Sort Pipeline Layout"),
+            bind_group_layouts: &[
+                &particale_bind_layout,
+                &settings_bind_layout,
+                &grid.grid_bind_layout,
+            ],
+            push_constant_ranges: &[
+                wgpu::PushConstantRange {
+                    stages: wgpu::ShaderStages::COMPUTE,
+                    range: 0..12,
+                },
+            ],
         });
 
         let predict_position_pipeline = pipeline_manager.create_compute_pipeline(
@@ -567,6 +612,34 @@ impl <'a> State <'a> {
             "update_position",
         );
 
+        let update_spatial_hash_pipeline = pipeline_manager.create_compute_pipeline(
+            "spatial_hash_compute_pipeline", 
+            &compute_layout, 
+            &compute_shader,
+            "update_spatial_hash",
+        );
+
+        let sort_pipeline = pipeline_manager.create_compute_pipeline(
+            "sort_compute_pipeline", 
+            &gpu_sort_layout, 
+            &compute_shader,
+            "bitonic_sort_kernel",
+        );
+
+        let indecies_pipeline = pipeline_manager.create_compute_pipeline(
+            "indecies_compute_pipeline", 
+            &compute_layout, 
+            &compute_shader,
+            "calculate_start_indices",
+        );
+
+        let reset_indecies_pipeline = pipeline_manager.create_compute_pipeline(
+            "reset_indecies_compute_pipeline", 
+            &compute_layout, 
+            &compute_shader,
+            "reset_indecies",
+        );
+
         let pressure_visualizer = pressure_visualizer::PressureVisualizer::new(
             &device,
             &pipeline_manager,
@@ -575,6 +648,11 @@ impl <'a> State <'a> {
             &water_simulation,
             &settings_bind_layout,
         );
+
+
+
+
+
 
         let num_indices = INDICES.len() as u32;
 
@@ -624,10 +702,16 @@ impl <'a> State <'a> {
             predict_position_pipeline,
             calculate_density_pipeline,
             update_position_pipeline,
+            update_spatial_hash_pipeline,
+            sort_pipeline,
+            indecies_pipeline,
+            reset_indecies_pipeline,
 
             settings_bind_group,
             pressure_visualizer,
             delta_time_buffer,
+
+            grid,
         }
     }
 

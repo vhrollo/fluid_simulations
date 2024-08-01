@@ -1,6 +1,6 @@
 use std::iter;
 
-
+use crate::simulation::grid::{Constants, HashCell};
 use crate::state::State;
 
 pub trait Render {
@@ -108,39 +108,91 @@ impl<'a> Render for State<'a> {
                 label: Some("Compute Encoder")
             });
         
-        {
-            let mut compute_pass = encoder.begin_compute_pass(
-                &wgpu::ComputePassDescriptor { 
-                    label: Some("Compute Pass"), timestamp_writes: None,
-            });
-            compute_pass.set_pipeline(&self.predict_position_pipeline);
-            compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
-            compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
-            compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
-        }
+        let mut compute_pass = encoder.begin_compute_pass(
+            &wgpu::ComputePassDescriptor { 
+                label: Some("Compute Pass"), timestamp_writes: None,
+        });
+        // particle predictioning
+        compute_pass.set_pipeline(&self.predict_position_pipeline);
+        compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+        compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+    
+        // particle hashing for faster neighbor search
+        // let clean_data = vec![HashCell{particle_index: -1, cell_index: -1}; self.water_simulation.max_particles];
 
-        {
-            let mut compute_pass = encoder.begin_compute_pass(
-                &wgpu::ComputePassDescriptor { 
-                    label: Some("Compute Pass"), timestamp_writes: None,
-            });
-            compute_pass.set_pipeline(&self.calculate_density_pipeline);
-            compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
-            compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
-            compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
-        }
+
+        // self.queue.write_buffer(&self.grid.spatial_lookup_buffer, 0, bytemuck::cast_slice(&clean_data));
+
+        compute_pass.set_pipeline(&self.update_spatial_hash_pipeline);
+        compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+        compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+    
+        // particle sorting
+        let next_power_of_two = 2u32.pow((self.water_simulation.num_particles as f32).log2().ceil() as u32);
+        if next_power_of_two > self.water_simulation.max_particles as u32 {
+            panic!("Number of particles exceeds maximum number of particles");
+        }      
         
-        {
-            let mut compute_pass = encoder.begin_compute_pass(
-                &wgpu::ComputePassDescriptor { 
-                    label: Some("Compute Pass"), timestamp_writes: None,
-            });
-            compute_pass.set_pipeline(&self.update_position_pipeline);
-            compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
-            compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
-            compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        // let buffer_padding_length = next_power_of_two - self.water_simulation.num_particles;
+        // let padding = vec![0; buffer_padding_length as usize];
+        println!("num_particles: {}", self.water_simulation.num_particles);
+        println!("next_power_of_two: {}", next_power_of_two);
+
+
+        // futures::executor::block_on(self.grid.print_buffer(&self.device, &self.queue));
+
+        let mut k = 2u32;
+        while k <= next_power_of_two as u32 {
+            let mut j = k / 2 as u32;
+            while j > 0 {
+                compute_pass.set_pipeline(&self.sort_pipeline);
+                compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+                compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+                compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+                let constants = Constants { k, j, pwer_of_two: next_power_of_two };
+                let constants_data = bytemuck::bytes_of(&constants);
+                compute_pass.set_push_constants(0, constants_data);
+                compute_pass.dispatch_workgroups((next_power_of_two + 15)/ 16, 1, 1);
+                j /= 2;
+            }
+            k *= 2;
         }
 
+        compute_pass.set_pipeline(&self.reset_indecies_pipeline);
+        compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+        compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.water_simulation.max_particles as u32 + 15)/ 16, 1, 1);
+
+        futures::executor::block_on(self.grid.print_buffer(&self.device, &self.queue));
+        // calculate_start_indices
+        compute_pass.set_pipeline(&self.indecies_pipeline);
+        compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+        compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        
+        futures::executor::block_on(self.grid.print_buffer2(&self.device, &self.queue));
+        // particle density calculation
+        compute_pass.set_pipeline(&self.calculate_density_pipeline);
+        compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+        compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+    
+        // particle force calculation
+        compute_pass.set_pipeline(&self.update_position_pipeline);
+        compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+        compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+    
+        drop(compute_pass);
+    
         self.queue.submit(iter::once(encoder.finish()));
         Ok(())
     }

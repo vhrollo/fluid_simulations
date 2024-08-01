@@ -41,7 +41,7 @@ impl WaterSimulation {
             densities: Vec::new(),
             num_particles: 0,
             num_particles_buffer,
-            max_particles: 10000,
+            max_particles: 10,
             bound_size: [8.0, 6.0], //x, y
             radius: RadiusLl::new(0.02),
             smoothing_radius: 0.1,
@@ -395,6 +395,7 @@ impl PositionLl {
 #[derive(Debug, Copy, Clone)]
 pub struct VelocityLl {
     pub position: Vector3<f32>, //12 bytes
+    pub _padding: f32,
 }
 
 unsafe impl Pod for VelocityLl {}
@@ -404,6 +405,7 @@ impl VelocityLl {
     pub fn new() -> Self {
         Self {
             position: Vector3 { x: 0.0, y: 0.0, z: 0.0 },
+            _padding: 0.0,
         }
     }
 }
