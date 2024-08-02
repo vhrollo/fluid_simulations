@@ -15,6 +15,6 @@ void main() {
         discard;
     }
 
-    // outColor = vec4(fragColor, 1.0);
-    outColor = vec4(0.0, 0.0, 0.0, 1.0);
+    outColor = vec4(fragColor, 1.0);
+    // outColor = vec4(0.0, 0.0, 0.0, 1.0);
 }

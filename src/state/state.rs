@@ -76,6 +76,7 @@ pub struct State<'a> {
     pub sort_pipeline: wgpu::ComputePipeline,
     pub indecies_pipeline: wgpu::ComputePipeline,
     pub reset_indecies_pipeline: wgpu::ComputePipeline,
+    pub viscosity_pipeline: wgpu::ComputePipeline,
 
     pub settings_bind_group: wgpu::BindGroup,
     pub pressure_visualizer: pressure_visualizer::PressureVisualizer,
@@ -163,7 +164,7 @@ impl <'a> State <'a> {
         let bind_groups = vec![diffuse_bind_group, jump_bind_group];
 
         let view = ViewMatrix::new(
-            [0.0, 0.0, -1.5],
+            [0.0, 0.0, -6.0],
             [0.0, 1.0, 0.0],
             90.0,
             0.0,
@@ -380,7 +381,7 @@ impl <'a> State <'a> {
 
 
 
-        water_simulation.add_multiple_random_particles(5, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
+        water_simulation.add_multiple_uniform_particles(1000, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
 
 
         let particle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -640,6 +641,13 @@ impl <'a> State <'a> {
             "reset_indecies",
         );
 
+        let viscosity_pipeline = pipeline_manager.create_compute_pipeline(
+            "viscosity_compute_pipeline", 
+            &compute_layout, 
+            &compute_shader,
+            "calculate_viscosity",
+        );
+
         let pressure_visualizer = pressure_visualizer::PressureVisualizer::new(
             &device,
             &pipeline_manager,
@@ -706,6 +714,7 @@ impl <'a> State <'a> {
             sort_pipeline,
             indecies_pipeline,
             reset_indecies_pipeline,
+            viscosity_pipeline,
 
             settings_bind_group,
             pressure_visualizer,

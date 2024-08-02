@@ -64,11 +64,11 @@ impl<'a> Render for State<'a> {
             // render_pass.draw(0..4, 0..self.water_simulation.num_particles);
             
             //pressure visualizer 
-            // render_pass.set_pipeline(&self.pressure_visualizer.pressure_pipeline);
-            // render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            // render_pass.set_bind_group(1, &self.particle_bind_group, &[]);
-            // render_pass.set_bind_group(2, &self.settings_bind_group, &[]);
-            // render_pass.draw(0..4,  0..1);
+            render_pass.set_pipeline(&self.pressure_visualizer.pressure_pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.particle_bind_group, &[]);
+            render_pass.set_bind_group(2, &self.settings_bind_group, &[]);
+            render_pass.draw(0..4,  0..1);
             
             //third pipeline - particle pipeline
             render_pass.set_pipeline(&self.particle_pipeline);
@@ -139,8 +139,8 @@ impl<'a> Render for State<'a> {
         
         // let buffer_padding_length = next_power_of_two - self.water_simulation.num_particles;
         // let padding = vec![0; buffer_padding_length as usize];
-        println!("num_particles: {}", self.water_simulation.num_particles);
-        println!("next_power_of_two: {}", next_power_of_two);
+        // println!("num_particles: {}", self.water_simulation.num_particles);
+        // println!("next_power_of_two: {}", next_power_of_two);
 
 
         // futures::executor::block_on(self.grid.print_buffer(&self.device, &self.queue));
@@ -168,7 +168,7 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
         compute_pass.dispatch_workgroups((self.water_simulation.max_particles as u32 + 15)/ 16, 1, 1);
 
-        futures::executor::block_on(self.grid.print_buffer(&self.device, &self.queue));
+        // futures::executor::block_on(self.grid.print_buffer(&self.device, &self.queue));
         // calculate_start_indices
         compute_pass.set_pipeline(&self.indecies_pipeline);
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
@@ -176,7 +176,7 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
         compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
         
-        futures::executor::block_on(self.grid.print_buffer2(&self.device, &self.queue));
+        // futures::executor::block_on(self.grid.print_buffer2(&self.device, &self.queue));
         // particle density calculation
         compute_pass.set_pipeline(&self.calculate_density_pipeline);
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
@@ -184,6 +184,13 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
         compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
     
+        //viscosity calculation
+        compute_pass.set_pipeline(&self.viscosity_pipeline);
+        compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
+        compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
+        compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        
         // particle force calculation
         compute_pass.set_pipeline(&self.update_position_pipeline);
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);

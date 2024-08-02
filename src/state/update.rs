@@ -53,7 +53,6 @@ impl<'a> OtherLogic for State<'a>{
             // self.water_simulation.update(delta_time);
             //self.water_simulation.update_in_parrallel(delta_time);
             // self.updateeparticle_vertex_data();
-            println!("update{}", self.water_simulation.num_particles);
             match self.compute() {
                 Ok(_) => {}
                 Err(e) => {

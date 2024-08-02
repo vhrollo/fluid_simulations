@@ -88,7 +88,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 
 const PI: f32 = 3.14159265359;
-const SMOOTHING_RADIUS: f32 = 0.8;
+const SMOOTHING_RADIUS: f32 = 0.4;
 const TARGET_DENSITY: f32 = 10.0;
 
 fn get_color(pressure: f32) -> vec4<f32> {
@@ -141,7 +141,8 @@ fn density_at_pos(particle_position: vec2<f32>) -> f32 {
         }
 
         var dist = sqrt(sqrDstToNeighbour);
-        density += smoothing_kernel_spiky(SMOOTHING_RADIUS, dist); 
+        density += smoothing_kernel_spiky(SMOOTHING_RADIUS, dist);
+
     }
     return max(density, 0.1);
 }
@@ -153,3 +154,11 @@ fn smoothing_kernel_spiky(s_rad: f32, dist: f32) -> f32 {
     var volume: f32 = PI * pow(s_rad, 4.0) / 6.0;
     return v * v / volume;
 }
+
+// fm smoothing_kernel_spikey_near(s_rad: f32, dist: f32) -> f32 {
+//     if (dist > s_rad) { return 0.0; }
+
+//     var v: f32 = s_rad - dist;
+//     var volume: f32 = PI * pow(s_rad, 4.0) / 6.0;
+//     return v * v / volume;
+// }

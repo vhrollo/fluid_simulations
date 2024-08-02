@@ -12,7 +12,7 @@ fn predict_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     predicted_p_position[index].position = external_forces(&pos, &vel);
     p_velocity[index].velocity = vel;
-    workgroupBarrier();
+
 }
 
 
@@ -30,7 +30,6 @@ fn update_spatial_hash(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     spatial_hash[index].cell_key = hash_key;
     spatial_hash[index].particle_index = index;
-    workgroupBarrier();
 }    
 
 // black magic fr, this alternative non-recursive method of bitonic sort is a bit more complex
@@ -108,7 +107,7 @@ fn calculate_viscosity(@builtin(global_invocation_id) global_id: vec3<u32>) {
     }
 
     var viscosity_force = fast_calculate_viscosity_force(index);
-    p_velocity[index].velocity += viscosity_force * VISCOSITY_STRENGTH * delta_time;
+    // p_velocity[index].velocity += viscosity_force * VISCOSITY_STRENGTH * delta_time;
 }
 
 
@@ -125,15 +124,13 @@ fn update_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
     var density = p_density[index].density;
     var pressure_force = fast_calculate_pressure_force(index, density);
-    var clamp_force = clamp_force(pressure_force, 100.0);
-    vel += clamp_force * delta_time;
+    vel += pressure_force * delta_time;
     pos += vel * delta_time;
 
     checkBoundaries(&pos, &vel, half_boundries);
 
     p_position[index].position = pos;
     p_velocity[index].velocity = vel;
-    workgroupBarrier();
 }
 
 
@@ -179,11 +176,12 @@ var<push_constant> c: PushConstants;
 
 const PI: f32 = 3.14159265359;
 const GRAVITY: f32 = 9.81;
-const BOUNDARY_RESTITUTION: f32 = 0.95; 
+const BOUNDARY_RESTITUTION: f32 = 0.95;
 const SMOOTHING_RADIUS: f32 = 0.4;
-const PRESSURE_MULTIPLIER: f32 = 6.0;
+const PRESSURE_MULTIPLIER: f32 = 1.3;
 const TARGET_DENSITY: f32 = 10.0;
 const TIME_STEP: f32 = 1 / 120.0;
+const TIME_STEP_SQ: f32 = TIME_STEP * TIME_STEP;
 const MASS: f32 = 1.0;
 const VISCOSITY_STRENGTH: f32 = 0.1;
 
@@ -199,24 +197,16 @@ fn calculateBoundries() -> vec2<f32> {
     );
 }
 
-fn clamp_force(force: vec3<f32>, max_magnitude: f32) -> vec3<f32> {
-    let magnitude = length(force);
-    if (magnitude > max_magnitude) {
-        return normalize(force) * max_magnitude;
-    }
-    return force;
-}
-
 // Simple boundary function
 fn checkBoundaries(pos: ptr<function, vec3f>, vel: ptr<function, vec3f>, half_boundries: vec2<f32>) {
     var edge_dst = half_boundries - abs((*pos).xy - boundry_box.boundry_box_center.xy);
     if (edge_dst.x < 0.0) {
-        (*pos).x = half_boundries.x * sign((*pos).x) / 1.00000;
+        (*pos).x = half_boundries.x * sign((*pos).x);
         (*vel).x = -(*vel).x * BOUNDARY_RESTITUTION;
     }
 
     if (edge_dst.y < 0.0) {
-        (*pos).y = half_boundries.y * sign((*pos).y) / 1.00000;
+        (*pos).y = half_boundries.y * sign((*pos).y);
         (*vel).y = -(*vel).y * BOUNDARY_RESTITUTION;
     }
 }
@@ -226,58 +216,28 @@ fn move_particle(pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>) {
     // *vel *= 0.0;
 }
 
-// Smoothing kernel functions
-
-// spikey kernel (s-d)^2
 fn smoothing_kernel_spiky(s_rad: f32, dist: f32) -> f32 {
     if (dist > s_rad) { return 0.0; }
 
-    var volume: f32 = 6.0 / (PI * pow(s_rad, 4.0));
-    var v: f32 = s_rad - dist + 1e-5;
-    return v * v * volume;
+    var v: f32 = s_rad - dist;
+    var volume: f32 = PI * pow(s_rad, 4.0) / 6.0;
+    return v * v / volume;
 }
 
 fn smoothing_kernel_derivative(s_rad: f32, dist: f32) -> f32 {
     if (dist > s_rad) { return 0.0; }
 
     var volume: f32 = 12.0 / (PI * pow(s_rad, 4.0));
-    var v: f32 = s_rad - dist + 1e-5;
+    var v: f32 = s_rad - dist;
     return - v * volume;
 }
 
-// spikey kernel near (s-d)^3
-fn smoothing_kernel_spikey_near(s_rad: f32, dist: f32) -> f32 {
-    if (dist > s_rad) { return 0.0; }
-
-    var v: f32 = s_rad - dist + 1e-5;
-    var volume: f32 = 10.0 / (PI * pow(s_rad, 5.0));
-    return v * v * v / volume;
-}
-
-fn smoothing_kernel_spikey_near_derivative(s_rad: f32, dist: f32) -> f32 {
-    if (dist > s_rad) { return 0.0; }
-
-    var v: f32 = s_rad - dist + 1e-5;
-    var volume: f32 = 30.0 / (PI * pow(s_rad, 5.0));
-    return - v * v * volume;
-}
-
-
-// poly6 kernel (s^2 - d^2)^3
 fn smoothing_kernel_poly6(s_rad: f32, dist: f32) -> f32 {
     if (dist > s_rad) { return 0.0; }
 
-    var v: f32 = pow(s_rad * s_rad - dist * dist + 1e-5, 3.0);
+    var v: f32 = pow(s_rad * s_rad - dist * dist, 3.0);
     var volume: f32 = 315.0 / (64.0 * PI * pow(s_rad, 9.0));
     return volume * v;
-}
-
-fn smoothing_kernel_poly6_derivative(s_rad: f32, dist: f32) -> f32 {
-    if (dist > s_rad) { return 0.0; }
-
-    var v: f32 = pow(s_rad * s_rad - dist * dist + 1e-5, 2.0);
-    var volume: f32 = 945.0 / (32.0 * PI * pow(s_rad, 9.0));
-    return - volume * v;
 }
 
 fn update_density(particle_index: u32) -> f32 {
@@ -385,7 +345,7 @@ fn calculate_pressure_force(particle_index: u32, density: f32) -> vec3f {
         // Calculate pressure force
         var dst = sqrt(sqrDstToNeighbour);
         var direction = normalize(offsetToNeighbour);
-        if (dst < 0.05) {direction = get_random_direction(particle_index);};
+        if (dst < 0.01) {direction = get_random_direction(particle_index);};
 
 
 
@@ -549,6 +509,7 @@ fn fast_calculate_viscosity_force(index: u32) -> vec3f{
 
             var dist = sqrt(sqr_dst_to_neighbour);
             var vel_diff = p_velocity[neighbour_index].velocity - p_velocity[index].velocity;
+            var direction = normalize(offset_to_neighbour);
             var laplacian = smoothing_kernel_poly6(SMOOTHING_RADIUS, dist);
             viscosity_force += vel_diff * laplacian * MASS;
 
