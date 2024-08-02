@@ -12,7 +12,7 @@ struct ParticleLl {
 };
 
 struct DensityLl {
-    float density;
+    vec2 density;
 };
 
 layout(set = 0, binding = 0) buffer ParticleBuffer { ParticleLl particles[]; };
@@ -73,8 +73,8 @@ float get_max_density() {
     float maxDens = 0.0;
 
     for (uint i = 0; i < numParticles; ++i) {
-        if (densities[i].density > maxDens) {
-            maxDens = densities[i].density;
+        if (densities[i].density.x > maxDens) {
+            maxDens = densities[i].density.x;
         }
     }
     return maxDens;
@@ -92,6 +92,6 @@ void main() {
     particlePosition = particles[particleIndex].position.xy;
 
     float maxDensity = get_max_density();
-    fragColor = gradient(densities[particleIndex].density / maxDensity);
+    fragColor = gradient(densities[particleIndex].density.x / maxDensity);
 }
 

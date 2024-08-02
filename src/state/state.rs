@@ -381,7 +381,7 @@ impl <'a> State <'a> {
 
 
 
-        water_simulation.add_multiple_uniform_particles(1000, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
+        water_simulation.add_multiple_uniform_particles(5000, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
 
 
         let particle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

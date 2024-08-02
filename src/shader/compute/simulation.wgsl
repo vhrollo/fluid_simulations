@@ -123,8 +123,7 @@ fn update_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var vel = p_velocity[index].velocity;
     let half_boundries = calculateBoundries();
 
-    var density = p_density[index].density;
-    var pressure_force = fast_calculate_pressure_force(index, density);
+    var pressure_force = fast_calculate_pressure_force(index);
     var clamp_force = clamp_force(pressure_force, 100.0);
     vel += clamp_force * delta_time;
     pos += vel * delta_time;
@@ -146,7 +145,7 @@ struct Particle_velocity {
 };
 
 struct Particle_density {
-    density: f32,
+    density: vec2f,
 };
 
 struct BoundryBox {
@@ -179,11 +178,12 @@ var<push_constant> c: PushConstants;
 
 const PI: f32 = 3.14159265359;
 const GRAVITY: f32 = 9.81;
-const BOUNDARY_RESTITUTION: f32 = 0.95; 
-const SMOOTHING_RADIUS: f32 = 0.4;
-const PRESSURE_MULTIPLIER: f32 = 6.0;
-const TARGET_DENSITY: f32 = 10.0;
-const TIME_STEP: f32 = 1 / 120.0;
+const BOUNDARY_RESTITUTION: f32 = 1.0; 
+const SMOOTHING_RADIUS: f32 = 1.0;
+const PRESSURE_MULTIPLIER: f32 = 50.0;
+const NEAR_PRESSURE_MULTIPLIER: f32 = 10.0;
+const TARGET_DENSITY: f32 = 5.0;
+const TIME_STEP: f32 = 1 / 60.0;
 const MASS: f32 = 1.0;
 const VISCOSITY_STRENGTH: f32 = 0.1;
 
@@ -280,31 +280,34 @@ fn smoothing_kernel_poly6_derivative(s_rad: f32, dist: f32) -> f32 {
     return - volume * v;
 }
 
-fn update_density(particle_index: u32) -> f32 {
+// old and not used
+
+// fn update_density(particle_index: u32) -> f32 {
+//     var density = 0.0;
+//     var particle_position = predicted_p_position[particle_index].position;
+//     var sqrRadius = SMOOTHING_RADIUS * SMOOTHING_RADIUS;
+
+//     for (var i: u32 = 0; i < num_particles; i++) {
+//         if (i == particle_index) {
+//             continue;
+//         }
+//         var neighbourPos = predicted_p_position[i].position;
+//         var offsetToNeighbour = neighbourPos - particle_position;
+//         var sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+//         if (sqrDstToNeighbour > sqrRadius) {
+//             continue;
+//         }
+
+//         var dist = sqrt(sqrDstToNeighbour);
+//         density += smoothing_kernel_spikey(SMOOTHING_RADIUS, dist); 
+//     }
+//     return max(density, 0.1);
+//}
+
+fn fast_update_density(particle_index: u32) -> vec2f {
     var density = 0.0;
-    var particle_position = predicted_p_position[particle_index].position;
-    var sqrRadius = SMOOTHING_RADIUS * SMOOTHING_RADIUS;
-
-    for (var i: u32 = 0; i < num_particles; i++) {
-        if (i == particle_index) {
-            continue;
-        }
-        var neighbourPos = predicted_p_position[i].position;
-        var offsetToNeighbour = neighbourPos - particle_position;
-        var sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
-
-        if (sqrDstToNeighbour > sqrRadius) {
-            continue;
-        }
-
-        var dist = sqrt(sqrDstToNeighbour);
-        density += smoothing_kernel_spikey(SMOOTHING_RADIUS, dist); 
-    }
-    return max(density, 0.1);
-}
-
-fn fast_update_density(particle_index: u32) -> f32 {
-    var density = 0.0;
+    var near_density = 0.0;
     var particle_position = predicted_p_position[particle_index].position;
     var norm_particle_position = get_shifted_2D_pos(particle_position.xy, calculateBoundries());
     var sqrRadius = SMOOTHING_RADIUS * SMOOTHING_RADIUS;
@@ -345,12 +348,16 @@ fn fast_update_density(particle_index: u32) -> f32 {
             }
 
             var dist = sqrt(sqr_dst_to_neighbour);
-            density += smoothing_kernel_spikey(SMOOTHING_RADIUS, dist); 
+            density += smoothing_kernel_spikey(SMOOTHING_RADIUS, dist);
+            near_density += smoothing_kernel_spikey_near(SMOOTHING_RADIUS, dist);
         
             curr_index += 1u;
         }
     }
-    return max(density, 0.1);
+    var max_density = max(density, 0.1);
+    var max_near_density = max(near_density, 0.1);
+
+    return vec2f(max_density, max_near_density);
 }
 
 fn calculate_symmetric_pressure(density_a: f32, density_b: f32) -> f32 {
@@ -363,47 +370,60 @@ fn convert_density_to_pressure(density: f32) -> f32 {
     return PRESSURE_MULTIPLIER * (density - TARGET_DENSITY);
 }
 
-
-fn calculate_pressure_force(particle_index: u32, density: f32) -> vec3f {
-    var pressure_force = vec3f(0.0, 0.0, 0.0);
-    var particle_position = predicted_p_position[particle_index].position;
-    var sqrRadius = SMOOTHING_RADIUS * SMOOTHING_RADIUS;
-
-
-    for (var i: u32 = 0; i < num_particles; i++) {
-        if (i == particle_index) {
-            continue;
-        }
-
-        var neighbourPos = predicted_p_position[i].position;
-        var offsetToNeighbour = neighbourPos - particle_position;
-        var sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
-
-        // Skip if not within radius
-        if (sqrDstToNeighbour > sqrRadius) {continue;};
-
-        // Calculate pressure force
-        var dst = sqrt(sqrDstToNeighbour);
-        var direction = normalize(offsetToNeighbour);
-        if (dst < 0.05) {direction = get_random_direction(particle_index);};
-
-
-
-        var slope = smoothing_kernel_spike_derivative(SMOOTHING_RADIUS, dst);
-        var other_particle_density = p_density[i].density;
-
-        var symmetric_pressure = calculate_symmetric_pressure(other_particle_density, density);
-        pressure_force += direction * slope * symmetric_pressure * MASS/ density;
-    }
-
-    return pressure_force;
+fn convert_near_density_to_pressure(near_density: f32) -> f32 {
+    return NEAR_PRESSURE_MULTIPLIER * near_density;
 }
 
-fn fast_calculate_pressure_force(particle_index: u32, density: f32) -> vec3f {
+
+//old and not used
+
+// fn calculate_pressure_force(particle_index: u32, density: f32) -> vec3f {
+//     var pressure_force = vec3f(0.0, 0.0, 0.0);
+//     var particle_position = predicted_p_position[particle_index].position;
+//     var sqrRadius = SMOOTHING_RADIUS * SMOOTHING_RADIUS;
+
+
+//     for (var i: u32 = 0; i < num_particles; i++) {
+//         if (i == particle_index) {
+//             continue;
+//         }
+
+//         var neighbourPos = predicted_p_position[i].position;
+//         var offsetToNeighbour = neighbourPos - particle_position;
+//         var sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+//         // Skip if not within radius
+//         if (sqrDstToNeighbour > sqrRadius) {continue;};
+
+//         // Calculate pressure force
+//         var dst = sqrt(sqrDstToNeighbour);
+//         var direction = normalize(offsetToNeighbour);
+//         if (dst < 0.05) {direction = get_random_direction(particle_index);};
+
+
+
+//         var slope = smoothing_kernel_spike_derivative(SMOOTHING_RADIUS, dst);
+//         var other_particle_density = p_density[i].density;
+
+//         var symmetric_pressure = calculate_symmetric_pressure(other_particle_density, density);
+//         pressure_force += direction * slope * symmetric_pressure * MASS/ density;
+//     }
+
+//     return pressure_force;
+// }
+
+fn fast_calculate_pressure_force(particle_index: u32) -> vec3f {
     var pressure_force = vec3f(0.0, 0.0, 0.0);
     var particle_position = predicted_p_position[particle_index].position;
     var norm_particle_position = get_shifted_2D_pos(particle_position.xy, calculateBoundries());
     var sqrRadius = SMOOTHING_RADIUS * SMOOTHING_RADIUS;
+
+    var density = p_density[particle_index].density.x;
+    var near_density = p_density[particle_index].density.y;
+    var pressure = convert_density_to_pressure(density);
+    var near_pressure = convert_near_density_to_pressure(near_density);
+
+
     var neighbor_offsets_2D = array<vec2<i32>, 9>(
         vec2<i32>(-1, -1), vec2<i32>(0, -1), vec2<i32>(1, -1),
         vec2<i32>(-1, 0), vec2<i32>(0, 0), vec2<i32>(1, 0),
@@ -446,16 +466,25 @@ fn fast_calculate_pressure_force(particle_index: u32, density: f32) -> vec3f {
                 direction = get_random_direction(particle_index);
             }
 
-            var slope = smoothing_kernel_spike_derivative(SMOOTHING_RADIUS, dst);
-            var other_particle_density = p_density[neighbour_index].density;
+            var neighbor_density = p_density[neighbour_index].density.x;
+            var neighbor_near_density = p_density[neighbour_index].density.y;
+            var neighbor_pressure = convert_density_to_pressure(neighbor_density);
+            var neighbor_near_pressure = convert_near_density_to_pressure(neighbor_near_density);
 
-            var symmetric_pressure = calculate_symmetric_pressure(other_particle_density, density);
-            pressure_force += direction * slope * symmetric_pressure * MASS / density;
+            var slope = smoothing_kernel_spike_derivative(SMOOTHING_RADIUS, dst);
+            var slope_near = smoothing_kernel_spikey_near_derivative(SMOOTHING_RADIUS, dst);
+
+            var shared_pressure = (pressure + neighbor_pressure) * 0.5;
+            var shared_near_pressure = (near_pressure + neighbor_near_pressure) * 0.5;
+
+            pressure_force += direction * slope * shared_pressure * MASS / neighbor_density;
+            pressure_force += direction * slope_near * shared_near_pressure * MASS / neighbor_near_density;
         
             curr_index += 1u;
         }
     }
-    return pressure_force;
+    var acceleration = pressure_force / density;
+    return acceleration;
 }
 
 // Other helper functions

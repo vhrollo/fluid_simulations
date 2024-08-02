@@ -42,7 +42,7 @@ impl WaterSimulation {
             num_particles: 0,
             num_particles_buffer,
             max_particles: 10000,
-            bound_size: [8.0, 6.0], //x, y
+            bound_size: [30.0, 20.0], //x, y
             radius: RadiusLl::new(0.08),
             smoothing_radius: 0.1,
             target_density: 4.0,
@@ -410,10 +410,9 @@ impl VelocityLl {
     }
 }
 
-#[repr(C, align(4))] // so stupid
 #[derive(Debug, Copy, Clone)]
 pub struct DensityLl {
-    pub density: f32,
+    pub density: Vector2<f32>,
 }
 
 unsafe impl Pod for DensityLl {}
@@ -422,24 +421,7 @@ unsafe impl Zeroable for DensityLl {}
 impl DensityLl {
     pub fn new() -> Self {
         Self {
-            density: 0.0,
-        }
-    }
-}
-
-#[repr(C, align(4))] // so stupid
-#[derive(Debug, Copy, Clone)]
-pub struct NearDensityLl {
-    pub near_density: f32,
-}
-
-unsafe impl Pod for NearDensityLl {}
-unsafe impl Zeroable for NearDensityLl {}
-
-impl NearDensityLl {
-    pub fn new() -> Self {
-        Self {
-            near_density: 0.0,
+            density: Vector2 { x: 0.0, y: 0.0 },
         }
     }
 }

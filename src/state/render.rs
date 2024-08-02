@@ -64,11 +64,11 @@ impl<'a> Render for State<'a> {
             // render_pass.draw(0..4, 0..self.water_simulation.num_particles);
             
             //pressure visualizer 
-            render_pass.set_pipeline(&self.pressure_visualizer.pressure_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.particle_bind_group, &[]);
-            render_pass.set_bind_group(2, &self.settings_bind_group, &[]);
-            render_pass.draw(0..4,  0..1);
+            // render_pass.set_pipeline(&self.pressure_visualizer.pressure_pipeline);
+            // render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            // render_pass.set_bind_group(1, &self.particle_bind_group, &[]);
+            // render_pass.set_bind_group(2, &self.settings_bind_group, &[]);
+            // render_pass.draw(0..4,  0..1);
             
             //third pipeline - particle pipeline
             render_pass.set_pipeline(&self.particle_pipeline);
