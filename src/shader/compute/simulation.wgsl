@@ -229,7 +229,7 @@ fn move_particle(pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>) {
 // Smoothing kernel functions
 
 // spikey kernel (s-d)^2
-fn smoothing_kernel_spiky(s_rad: f32, dist: f32) -> f32 {
+fn smoothing_kernel_spikey(s_rad: f32, dist: f32) -> f32 {
     if (dist > s_rad) { return 0.0; }
 
     var volume: f32 = 6.0 / (PI * pow(s_rad, 4.0));
@@ -237,7 +237,7 @@ fn smoothing_kernel_spiky(s_rad: f32, dist: f32) -> f32 {
     return v * v * volume;
 }
 
-fn smoothing_kernel_derivative(s_rad: f32, dist: f32) -> f32 {
+fn smoothing_kernel_spike_derivative(s_rad: f32, dist: f32) -> f32 {
     if (dist > s_rad) { return 0.0; }
 
     var volume: f32 = 12.0 / (PI * pow(s_rad, 4.0));
@@ -249,9 +249,9 @@ fn smoothing_kernel_derivative(s_rad: f32, dist: f32) -> f32 {
 fn smoothing_kernel_spikey_near(s_rad: f32, dist: f32) -> f32 {
     if (dist > s_rad) { return 0.0; }
 
-    var v: f32 = s_rad - dist + 1e-5;
     var volume: f32 = 10.0 / (PI * pow(s_rad, 5.0));
-    return v * v * v / volume;
+    var v: f32 = s_rad - dist + 1e-5;
+    return v * v * v * volume;
 }
 
 fn smoothing_kernel_spikey_near_derivative(s_rad: f32, dist: f32) -> f32 {
@@ -298,7 +298,7 @@ fn update_density(particle_index: u32) -> f32 {
         }
 
         var dist = sqrt(sqrDstToNeighbour);
-        density += smoothing_kernel_spiky(SMOOTHING_RADIUS, dist); 
+        density += smoothing_kernel_spikey(SMOOTHING_RADIUS, dist); 
     }
     return max(density, 0.1);
 }
@@ -345,7 +345,7 @@ fn fast_update_density(particle_index: u32) -> f32 {
             }
 
             var dist = sqrt(sqr_dst_to_neighbour);
-            density += smoothing_kernel_spiky(SMOOTHING_RADIUS, dist); 
+            density += smoothing_kernel_spikey(SMOOTHING_RADIUS, dist); 
         
             curr_index += 1u;
         }
@@ -389,7 +389,7 @@ fn calculate_pressure_force(particle_index: u32, density: f32) -> vec3f {
 
 
 
-        var slope = smoothing_kernel_derivative(SMOOTHING_RADIUS, dst);
+        var slope = smoothing_kernel_spike_derivative(SMOOTHING_RADIUS, dst);
         var other_particle_density = p_density[i].density;
 
         var symmetric_pressure = calculate_symmetric_pressure(other_particle_density, density);
@@ -446,7 +446,7 @@ fn fast_calculate_pressure_force(particle_index: u32, density: f32) -> vec3f {
                 direction = get_random_direction(particle_index);
             }
 
-            var slope = smoothing_kernel_derivative(SMOOTHING_RADIUS, dst);
+            var slope = smoothing_kernel_spike_derivative(SMOOTHING_RADIUS, dst);
             var other_particle_density = p_density[neighbour_index].density;
 
             var symmetric_pressure = calculate_symmetric_pressure(other_particle_density, density);
