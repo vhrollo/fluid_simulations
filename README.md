@@ -7,7 +7,7 @@ A simple 2D Smoothed Particle Hydrodynamics (SPH) simulation using WGSL, and som
 - GPU-accelerated particle simulation.
 - Real-time visualization of particle movements.
 - Multi-pass computation for accurate particle interaction.
-- Interaction with particles
+- Mouse interaction with particles 
 
 ## Sample
 ![](https://github.com/vhrollo/fluid_simulations/blob/main/example/example.gif)
