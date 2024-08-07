@@ -6,7 +6,6 @@ fn predict_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
     if (index >= num_particles) {
         return;
     }
-
     var pos = p_position[index].position;
     var vel = p_velocity[index].velocity;
 
@@ -158,6 +157,10 @@ struct KeyValuePair {
     cell_key: i32,
 };
 
+struct matrix {
+    m: mat4x4<f32>,
+};
+
 @group(0) @binding(0) var<storage, read_write> p_position: array<Particle_position>;
 @group(0) @binding(1) var<storage, read_write> p_velocity: array<Particle_velocity>;
 @group(0) @binding(2) var<storage, read_write> p_density: array<Particle_density>;
@@ -166,19 +169,39 @@ struct KeyValuePair {
 @group(1) @binding(0) var<uniform> radius: f32;
 @group(1) @binding(1) var<uniform> num_particles: u32;
 @group(1) @binding(2) var<storage, read> boundry_box: BoundryBox;
-@group(1) @binding(3) var<uniform> delta_time: f32;
+// @group(1) @binding(3) var<uniform> delta_time: f32;
 @group(1) @binding(4) var<uniform> max_particles: u32;
+@group(1) @binding(5) var<storage, read> pressed: u32;
+@group(1) @binding(6) var<storage, read> mouse_delta: MouseDelta;
+
+
 
 @group(2) @binding(0) var<storage, read_write> spatial_hash: array<KeyValuePair>;
 @group(2) @binding(1) var<storage, read_write> start_indices: array<u32>;
 @group(2) @binding(1) var<storage, read_write> entries: array<u32>;
 
+@group(3) @binding(0) var<uniform> proj_view_inv: matrix;
+
+
 struct PushConstants { k: u32, j: u32, next_pwr: u32 }
 var<push_constant> c: PushConstants;
 
+struct MouseDelta {
+    previous_position: vec2<f32>,
+    current_position: vec2<f32>,
+};
+
+const OPENGL_TO_WGPU_MATRIX = mat4x4<f32>(
+    vec4<f32>(1.0, 0.0, 0.0, 0.0),
+    vec4<f32>(0.0, 1.0, 0.0, 0.0),
+    vec4<f32>(0.0, 0.0, 0.5, 0.5),
+    vec4<f32>(0.0, 0.0, 0.0, 1.0)
+);
+
+
 const PI: f32 = 3.14159265359;
 const GRAVITY: f32 = 9.81;
-const BOUNDARY_RESTITUTION: f32 = 1.0; 
+const BOUNDARY_RESTITUTION: f32 = 0.9; 
 const SMOOTHING_RADIUS: f32 = 1.0;
 const PRESSURE_MULTIPLIER: f32 = 50.0;
 const NEAR_PRESSURE_MULTIPLIER: f32 = 10.0;
@@ -186,11 +209,41 @@ const TARGET_DENSITY: f32 = 5.0;
 const TIME_STEP: f32 = 1 / 60.0;
 const MASS: f32 = 1.0;
 const VISCOSITY_STRENGTH: f32 = 0.1;
+const delta_time: f32 = 1.0 / 60.0; // the game loop is so bad from winit that we have to hardcode this
+const interaction_radius: f32 = 2.0;
+const interaction_strength: f32 = 1.0;
 
-fn external_forces( pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>) -> vec3<f32> {
+
+fn external_forces(pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>) -> vec3<f32> {
+    // Apply gravity
+
+    // Add mouse interaction force
+    if pressed == 1 {
+        let mouse_pos_ndc = vec4<f32>(
+            mouse_delta.current_position,
+            0.0,
+            1.0
+        );
+        let mouse_pos_world = proj_view_inv.m * mouse_pos_ndc;
+        let diff = mouse_pos_world.xy - (*pos).xy;
+        let sqrDst = dot(diff, diff);
+
+        if (sqrDst < interaction_radius * interaction_radius) {
+            let dist = sqrt(sqrDst);
+            let edgeT = dist / interaction_radius;
+            let centreT = 1.0 - edgeT;
+            let direction = normalize(diff);
+            let force = direction * (interaction_radius - dist) * interaction_strength;
+            (*vel).x += force.x;
+            (*vel).y += force.y;
+            return (*pos) + (*vel) * TIME_STEP;
+        }
+    }
+
     (*vel).y -= GRAVITY * delta_time;
     return (*pos) + (*vel) * TIME_STEP;
 }
+
 
 fn calculateBoundries() -> vec2<f32> {
     return vec2(
@@ -208,18 +261,33 @@ fn clamp_force(force: vec3<f32>, max_magnitude: f32) -> vec3<f32> {
 }
 
 // Simple boundary function
-fn checkBoundaries(pos: ptr<function, vec3f>, vel: ptr<function, vec3f>, half_boundries: vec2<f32>) {
-    var edge_dst = half_boundries - abs((*pos).xy - boundry_box.boundry_box_center.xy);
-    if (edge_dst.x < 0.0) {
-        (*pos).x = half_boundries.x * sign((*pos).x) / 1.00000;
-        (*vel).x = -(*vel).x * BOUNDARY_RESTITUTION;
+fn checkBoundaries(pos: ptr<function, vec3f>, vel: ptr<function, vec3f>, half_boundaries: vec2<f32>) {
+    let min_bound = boundry_box.boundry_box_center.xy - half_boundaries;
+    let max_bound = boundry_box.boundry_box_center.xy + half_boundaries;
+
+    // Check X boundaries
+    if ((*pos).x < min_bound.x) {
+        let penetration = min_bound.x - (*pos).x;
+        (*pos).x = min_bound.x + penetration; // Push the particle out of the boundary
+        (*vel).x = -(*vel).x * BOUNDARY_RESTITUTION; // Invert and dampen velocity
+    } else if ((*pos).x > max_bound.x) {
+        let penetration = (*pos).x - max_bound.x;
+        (*pos).x = max_bound.x - penetration; // Push the particle out of the boundary
+        (*vel).x = -(*vel).x * BOUNDARY_RESTITUTION; // Invert and dampen velocity
     }
 
-    if (edge_dst.y < 0.0) {
-        (*pos).y = half_boundries.y * sign((*pos).y) / 1.00000;
-        (*vel).y = -(*vel).y * BOUNDARY_RESTITUTION;
+    // Check Y boundaries
+    if ((*pos).y < min_bound.y) {
+        let penetration = min_bound.y - (*pos).y;
+        (*pos).y = min_bound.y + penetration; // Push the particle out of the boundary
+        (*vel).y = -(*vel).y * BOUNDARY_RESTITUTION; // Invert and dampen velocity
+    } else if ((*pos).y > max_bound.y) {
+        let penetration = (*pos).y - max_bound.y;
+        (*pos).y = max_bound.y - penetration; // Push the particle out of the boundary
+        (*vel).y = -(*vel).y * BOUNDARY_RESTITUTION; // Invert and dampen velocity
     }
 }
+
 
 fn move_particle(pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>) {
     *pos += *vel;

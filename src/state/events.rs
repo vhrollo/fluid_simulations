@@ -22,7 +22,7 @@ pub trait EventHandler {
 
 impl<'a> EventHandler for State<'a> {
     fn handle_event(&mut self, event: &WindowEvent) -> bool {
-        self.camera_controller.process_events(event)
+        self.camera_controller.process_events(event, self.size)
     }
 
     fn process_event_loop(&mut self, event: Event<ApplicationEvent>, control_flow: &EventLoopWindowTarget<ApplicationEvent>) {

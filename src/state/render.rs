@@ -117,6 +117,7 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
+        compute_pass.set_bind_group(3, &self.camera_bind_group_inverse, &[]);
         compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
     
         // particle hashing for faster neighbor search

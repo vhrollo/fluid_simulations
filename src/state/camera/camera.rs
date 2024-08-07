@@ -1,3 +1,4 @@
+use cgmath::{Matrix3, SquareMatrix};
 use fluid_simulations::SVec;
 
 
@@ -66,7 +67,7 @@ impl ViewMatrix {
             pitch.to_radians().sin(),
             yaw.to_radians().sin() * pitch.to_radians().cos(),
         ];
-            let matrix = Self::calculate_matrix(&position, forward, up);
+        let matrix = Self::calculate_matrix(&position, forward, up);
 
         Self {
             position,
@@ -125,3 +126,8 @@ impl ViewMatrix {
 
 
 // some custom type shit to make vector adding easier and vector mul
+
+pub fn inverse(matrix: cgmath::Matrix4<f32>) -> cgmath::Matrix4<f32> {
+    let inverted = matrix.invert().unwrap();
+    inverted
+}

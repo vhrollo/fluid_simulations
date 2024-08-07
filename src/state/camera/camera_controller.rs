@@ -1,9 +1,21 @@
 #![feature(duration_millis_float)]
 use std::time::{Duration, Instant};
 
+use cgmath::Vector2;
 use winit::{event::{WindowEvent::{self, KeyboardInput}, ElementState, KeyEvent}, keyboard::{KeyCode, PhysicalKey}, dpi::PhysicalPosition};
 use super::camera::{ViewMatrix, CameraMatrix};
 use fluid_simulations::SVec;
+use bytemuck::{Pod, Zeroable};
+
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct MouseDelta {
+    pub previous_position: Vector2<f32>,
+    pub current_position: Vector2<f32>,
+}
+unsafe impl Pod for MouseDelta {}
+unsafe impl Zeroable for MouseDelta {}
 
 
 pub struct CameraController {
@@ -15,13 +27,14 @@ pub struct CameraController {
     is_right_pressed: bool,
     is_up_pressed: bool,
     is_down_pressed: bool,
-    is_mouse_pressed: bool,
+    pub is_mouse_pressed: bool,
     previous_mouse_position: Option<PhysicalPosition<f64>>,
     last_frame_time: Instant,
     yaw: f32,
     pitch: f32,
     x_delta: f32,
     y_delta: f32,
+    pub mouse_delta: MouseDelta,
 }
 
 impl CameraController {
@@ -46,10 +59,14 @@ impl CameraController {
             pitch,
             x_delta: 0.0,
             y_delta: 0.0,
+            mouse_delta: MouseDelta {
+                previous_position: Vector2::new(1000.0, 1000.0),
+                current_position: Vector2::new(1000.0, 1000.0),
+            },
         }
     }
 
-    pub fn process_events(&mut self, event: &WindowEvent) -> bool {
+    pub fn process_events(&mut self, event: &WindowEvent, size: winit::dpi::PhysicalSize<u32>) -> bool {
         match event {
             WindowEvent::KeyboardInput {
                 event:
@@ -99,6 +116,12 @@ impl CameraController {
                         self.x_delta += (position.x - prev_pos.x) as f32;
                         self.y_delta += (position.y - prev_pos.y) as f32;
                     }
+                    self.mouse_delta.previous_position = self.mouse_delta.current_position;
+                    self.mouse_delta.current_position = Vector2::new(
+                        (position.x as f32 / size.width as f32) * 2.0 - 1.0,
+                        -((position.y as f32 / size.height as f32) * 2.0 - 1.0)
+                    );
+                    println!("{:?}", self.mouse_delta);
                     self.previous_mouse_position = Some(*position);
                 } else {
                     self.previous_mouse_position = Some(*position);

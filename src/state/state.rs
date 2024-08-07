@@ -13,6 +13,10 @@ use super::shader_helper;
 use fluid_simulations::{VERTICESIMG, INDICES, VertexImg};
 use super::plane_state::{density_visualizer::DensityVisualizer, smoothing_ring::SmoothingPipeline};
 use crate::simulation::grid::{Grid, Constants};
+use crate::state::camera::camera_controller::MouseDelta;
+use crate::state::camera::camera::MatrixUniform;
+use crate::state::camera::camera::inverse;
+use cgmath::SquareMatrix;
 
 use winit::{
     event::WindowEvent,
@@ -55,7 +59,10 @@ pub struct State<'a> {
     pub proj: CameraMatrix,
     pub view_buffer: wgpu::Buffer,
     pub proj_buffer: wgpu::Buffer,
+    pub proj_view_inv_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
+    pub camera_bind_group_inverse: wgpu::BindGroup,
+    pub proj_view_inv: MatrixUniform,
 
     pub camera_controller: CameraController,
 
@@ -81,6 +88,9 @@ pub struct State<'a> {
     pub settings_bind_group: wgpu::BindGroup,
     pub pressure_visualizer: pressure_visualizer::PressureVisualizer,
     pub delta_time_buffer: wgpu::Buffer,
+
+    pub pressed_buffer: wgpu::Buffer,
+    pub mouse_delta_buffer: wgpu::Buffer,
 
     pub grid: Grid,
 }
@@ -177,6 +187,11 @@ impl <'a> State <'a> {
             1024.0
         );
 
+        let matrix4_proj: cgmath::Matrix4<f32> = proj.camera_matrix.matrix.into();
+        let matrix4_view: cgmath::Matrix4<f32> = view.view_matrix.matrix.into();
+        let proj_view_inv = MatrixUniform { matrix: inverse(matrix4_proj * matrix4_view).into()};
+
+
         let camera_controller = CameraController::new(5.0, 20.0, &view);
         let mut water_simulation = WaterSimulation::new(&device);
 
@@ -190,6 +205,12 @@ impl <'a> State <'a> {
             &device,
              "Perspective Buffer", 
             bytemuck::cast_slice(&[proj.camera_matrix]), 
+            wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
+
+        let proj_view_inv_buffer= Self::create_init_buffer(
+            &device,
+             "View Buffer Inverse", 
+            bytemuck::cast_slice(&[proj_view_inv]), 
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST);
 
         let radius_buffer = Self::create_init_buffer(
@@ -239,7 +260,7 @@ impl <'a> State <'a> {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -249,7 +270,7 @@ impl <'a> State <'a> {
                 },
                 wgpu::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -260,6 +281,23 @@ impl <'a> State <'a> {
             ],
             label: Some("camera_bind_group_layout"),
         });
+
+        let camera_bind_inverse_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+            label: Some("camera_bind_group_layout"),
+        }); 
+
 
         let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &camera_bind_group_layout,
@@ -276,7 +314,16 @@ impl <'a> State <'a> {
             label: Some("camera_bind_group"),
         });
 
-
+        let camera_bind_group_inverse = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_inverse_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: proj_view_inv_buffer.as_entire_binding(),
+                },
+            ],
+            label: Some("camera_bind_group_inverse"),
+        });
 
         let particale_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -482,6 +529,19 @@ impl <'a> State <'a> {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        let pressed_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Pressed Buffer"),
+            contents: bytemuck::cast_slice(&[0u32]),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let mouse_delta_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Mouse Delta Buffer"),
+            contents: bytemuck::cast_slice(&[MouseDelta{previous_position: cgmath::vec2(0.0, 0.0), current_position: cgmath::vec2(0.0, 0.0)}]),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
+
         let settings_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -534,6 +594,26 @@ impl <'a> State <'a> {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: Some("settings_bind_layout"),
         });
@@ -561,6 +641,14 @@ impl <'a> State <'a> {
                     binding: 4,
                     resource: max_particles_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: pressed_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: mouse_delta_buffer.as_entire_binding(),
+                },
             ],
             label: Some("settings_bind_group"),
         });
@@ -573,6 +661,17 @@ impl <'a> State <'a> {
                 &particale_bind_layout,
                 &settings_bind_layout,
                 &grid.grid_bind_layout,
+            ],
+            push_constant_ranges: &[],
+        });
+
+        let compute_mouse_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Simulation Pipeline Layout"),
+            bind_group_layouts: &[
+                &particale_bind_layout,
+                &settings_bind_layout,
+                &grid.grid_bind_layout,
+                &camera_bind_inverse_group_layout,
             ],
             push_constant_ranges: &[],
         });
@@ -594,7 +693,7 @@ impl <'a> State <'a> {
 
         let predict_position_pipeline = pipeline_manager.create_compute_pipeline(
             "predict_position_compute_pipeline", 
-            &compute_layout, 
+            &compute_mouse_layout, 
             &compute_shader,
             "predict_position",
         );
@@ -693,7 +792,10 @@ impl <'a> State <'a> {
             proj,
             view_buffer,
             proj_buffer,
+            proj_view_inv_buffer,
             camera_bind_group,
+            camera_bind_group_inverse,
+            proj_view_inv,
 
             camera_controller,
 
@@ -719,6 +821,9 @@ impl <'a> State <'a> {
             settings_bind_group,
             pressure_visualizer,
             delta_time_buffer,
+
+            pressed_buffer,
+            mouse_delta_buffer,
 
             grid,
         }
@@ -751,7 +856,7 @@ impl <'a> State <'a> {
     }
 
     pub fn input(&mut self, event: &WindowEvent) -> bool {
-        self.camera_controller.process_events(event)
+        self.camera_controller.process_events(event, self.size)
     }
 
     pub fn run(mut self, event_loop: EventLoop<ApplicationEvent>) {
