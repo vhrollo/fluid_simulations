@@ -88,6 +88,7 @@ pub struct State<'a> {
     pub settings_bind_group: wgpu::BindGroup,
     pub pressure_visualizer: pressure_visualizer::PressureVisualizer,
     pub delta_time_buffer: wgpu::Buffer,
+    pub cheat_depth_buffer: wgpu::Buffer,
 
     pub pressed_buffer: wgpu::Buffer,
     pub mouse_delta_buffer: wgpu::Buffer,
@@ -428,7 +429,7 @@ impl <'a> State <'a> {
 
 
 
-        water_simulation.add_multiple_uniform_particles(5000, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
+        water_simulation.add_multiple_uniform_particles(500, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
 
 
         let particle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -541,6 +542,12 @@ impl <'a> State <'a> {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
+        let cheat_depth_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Cheat Depth Buffer"),
+            contents: bytemuck::cast_slice(&[0.33f32]),
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        });
+
 
         let settings_bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             entries: &[
@@ -614,6 +621,16 @@ impl <'a> State <'a> {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
             label: Some("settings_bind_layout"),
         });
@@ -648,6 +665,10 @@ impl <'a> State <'a> {
                 wgpu::BindGroupEntry {
                     binding: 6,
                     resource: mouse_delta_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: cheat_depth_buffer.as_entire_binding(),
                 },
             ],
             label: Some("settings_bind_group"),
@@ -821,6 +842,7 @@ impl <'a> State <'a> {
             settings_bind_group,
             pressure_visualizer,
             delta_time_buffer,
+            cheat_depth_buffer,
 
             pressed_buffer,
             mouse_delta_buffer,

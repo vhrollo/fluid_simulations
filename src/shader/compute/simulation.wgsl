@@ -173,6 +173,7 @@ struct matrix {
 @group(1) @binding(4) var<uniform> max_particles: u32;
 @group(1) @binding(5) var<storage, read> pressed: u32;
 @group(1) @binding(6) var<storage, read> mouse_delta: MouseDelta;
+@group(1) @binding(7) var<storage, read> cheat_depth: f32;
 
 
 
@@ -216,16 +217,17 @@ const interaction_strength: f32 = 1.0;
 
 fn external_forces(pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>) -> vec3<f32> {
     // Apply gravity
+    (*vel).y -= GRAVITY * delta_time;
 
     // Add mouse interaction force
     if pressed == 1 {
         let mouse_pos_ndc = vec4<f32>(
             mouse_delta.current_position,
-            0.0,
+            cheat_depth,
             1.0
         );
         let mouse_pos_world = proj_view_inv.m * mouse_pos_ndc;
-        let diff = mouse_pos_world.xy - (*pos).xy;
+        let diff = (mouse_pos_world.xy / mouse_pos_world.w) - (*pos).xy; // Divide by w to get correct world coordinates
         let sqrDst = dot(diff, diff);
 
         if (sqrDst < interaction_radius * interaction_radius) {
@@ -240,9 +242,9 @@ fn external_forces(pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>)
         }
     }
 
-    (*vel).y -= GRAVITY * delta_time;
     return (*pos) + (*vel) * TIME_STEP;
 }
+
 
 
 fn calculateBoundries() -> vec2<f32> {

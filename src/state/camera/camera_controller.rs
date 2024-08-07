@@ -8,7 +8,7 @@ use fluid_simulations::SVec;
 use bytemuck::{Pod, Zeroable};
 
 
-#[repr(C)]
+#[repr(C, align(4))]
 #[derive(Debug, Copy, Clone)]
 pub struct MouseDelta {
     pub previous_position: Vector2<f32>,
@@ -118,10 +118,10 @@ impl CameraController {
                     }
                     self.mouse_delta.previous_position = self.mouse_delta.current_position;
                     self.mouse_delta.current_position = Vector2::new(
-                        (position.x as f32 / size.width as f32) * 2.0 - 1.0,
-                        -((position.y as f32 / size.height as f32) * 2.0 - 1.0)
+                        ((position.x as f32 / size.width as f32) * 2.0 - 1.0),
+                        -(((position.y as f32 / size.height as f32) * 2.0 - 1.0))
                     );
-                    println!("{:?}", self.mouse_delta);
+                    // println!("{:?}", self.mouse_delta);
                     self.previous_mouse_position = Some(*position);
                 } else {
                     self.previous_mouse_position = Some(*position);
