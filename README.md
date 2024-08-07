@@ -10,4 +10,11 @@ This project demonstrates a simple 2D Smoothed Particle Hydrodynamics (SPH) simu
 - Interaction with particles
 
 ## Sample
+![](https://github.com/vhrollo/fluid_simulations/blob/main/example/example.gif)
 
+## Sources
+- https://github.com/SebLague/Fluid-Sim
+- https://web.archive.org/web/20140725014123/https://docs.nvidia.com/cuda/samples/5_Simulations/particles/doc/particles.pdf
+- https://sph-tutorial.physics-simulation.org/pdf/SPH_Tutorial.pdf
+- http://www.ligum.umontreal.ca/Clavet-2005-PVFS/pvfs.pdf
+- https://matthias-research.github.io/pages/publications/sca03.pdf
