@@ -41,7 +41,7 @@ impl WaterSimulation {
             densities: Vec::new(),
             num_particles: 0,
             num_particles_buffer,
-            max_particles: 10000,
+            max_particles: 2u32.pow(12) as usize,
             bound_size: [30.0, 20.0], //x, y
             radius: RadiusLl::new(0.08),
             smoothing_radius: 0.1,

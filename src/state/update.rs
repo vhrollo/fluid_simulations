@@ -72,7 +72,7 @@ impl<'a> OtherLogic for State<'a>{
         
         let mouse_pos_world = proj_view_inv * mouse_pos_ndc;
         let world_pos = (cgmath::Vector2 { x: mouse_pos_world.x, y: mouse_pos_world.y } / mouse_pos_world.w);
-        println!("Mouse World Pos: {:?}", world_pos);
+        // println!("Mouse World Pos: {:?}", world_pos);
 
         // println!("{:?}", OPENGL_TO_WGPU_MATRIX * matrix4_proj * matrix4_view * Vector4{x:8.5, y:8.5, z:0.0, w:1.0});
 

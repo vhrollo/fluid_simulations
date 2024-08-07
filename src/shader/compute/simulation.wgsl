@@ -211,7 +211,7 @@ const TIME_STEP: f32 = 1 / 60.0;
 const MASS: f32 = 1.0;
 const VISCOSITY_STRENGTH: f32 = 0.1;
 const delta_time: f32 = 1.0 / 60.0; // the game loop is so bad from winit that we have to hardcode this
-const interaction_radius: f32 = 2.0;
+const interaction_radius: f32 = 3.0;
 const interaction_strength: f32 = 1.0;
 
 
