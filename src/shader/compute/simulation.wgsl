@@ -1,6 +1,9 @@
 // This is a simple 2D SPH simulation shader.
 
-@compute @workgroup_size(16, 16, 1)
+const WG_SIZE_X: u32 = 16;
+const WG_SIZE_Y: u32 = 16;
+
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn predict_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var index = global_id.x;
     if (index >= num_particles) {
@@ -16,7 +19,7 @@ fn predict_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 
 
-@compute @workgroup_size(16, 16, 1)
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn update_spatial_hash(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var index = global_id.x;
     if (index >= num_particles) {
@@ -34,7 +37,7 @@ fn update_spatial_hash(@builtin(global_invocation_id) global_id: vec3<u32>) {
 
 // black magic fr, this alternative non-recursive method of bitonic sort is a bit more complex
 //https://en.m.wikipedia.org/wiki/Bitonic_sorter
-@compute @workgroup_size(16, 16, 1)
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn bitonic_sort_kernel(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var index = global_id.x;
     var l = index ^ c.j;
@@ -63,7 +66,7 @@ fn bitonic_sort_kernel(@builtin(global_invocation_id) global_id: vec3<u32>) {
     workgroupBarrier(); // Ensure all threads have completed their operations before next iteration
 }
 
-@compute @workgroup_size(16, 16, 1)
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn reset_indecies(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var index = global_id.x;
     if (index >= max_particles) {
@@ -72,7 +75,7 @@ fn reset_indecies(@builtin(global_invocation_id) global_id: vec3<u32>) {
     start_indices[index] = max_particles;
 }
 
-@compute @workgroup_size(16, 16, 1)
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn calculate_start_indices(@builtin(global_invocation_id) global_id: vec3<u32>) {
     var index = global_id.x;
     if (index >= num_particles) {
@@ -88,7 +91,7 @@ fn calculate_start_indices(@builtin(global_invocation_id) global_id: vec3<u32>) 
 
 }
 
-@compute @workgroup_size(16, 16, 1)
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn calculate_density(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
     if (index >= num_particles) {
@@ -99,7 +102,7 @@ fn calculate_density(@builtin(global_invocation_id) global_id: vec3<u32>) {
     p_density[index].density = density;
 }
 
-@compute @workgroup_size(16, 16, 1)
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn calculate_viscosity(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
     if (index >= num_particles) {
@@ -111,7 +114,7 @@ fn calculate_viscosity(@builtin(global_invocation_id) global_id: vec3<u32>) {
 }
 
 
-@compute @workgroup_size(16, 16, 1)
+@compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn update_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
     let index = global_id.x;
     if (index >= num_particles) {

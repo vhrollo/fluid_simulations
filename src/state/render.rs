@@ -3,9 +3,16 @@ use std::iter;
 use crate::simulation::grid::{Constants, HashCell};
 use crate::state::State;
 
+const WG_SIZE: u32 = 16;
+
 pub trait Render {
     fn render(&mut self) -> Result<(), wgpu::SurfaceError>;
     fn compute(&mut self) -> Result<(), wgpu::SurfaceError>;
+}
+
+fn dispatch_1d(pass: &mut wgpu::ComputePass<'_>, n: u32, wg: u32) {
+    let groups = (n + wg - 1) / wg;
+    pass.dispatch_workgroups(groups, 1, 1);
 }
 
 
@@ -118,7 +125,7 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
         compute_pass.set_bind_group(3, &self.camera_bind_group_inverse, &[]);
-        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        dispatch_1d(&mut compute_pass, self.water_simulation.num_particles, WG_SIZE);
     
         // particle hashing for faster neighbor search
         // let clean_data = vec![HashCell{particle_index: -1, cell_index: -1}; self.water_simulation.max_particles];
@@ -130,7 +137,7 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        dispatch_1d(&mut compute_pass, self.water_simulation.num_particles, WG_SIZE);
     
         // particle sorting
         let next_power_of_two = 2u32.pow((self.water_simulation.num_particles as f32).log2().ceil() as u32);
@@ -157,7 +164,7 @@ impl<'a> Render for State<'a> {
                 let constants = Constants { k, j, pwer_of_two: next_power_of_two };
                 let constants_data = bytemuck::bytes_of(&constants);
                 compute_pass.set_push_constants(0, constants_data);
-                compute_pass.dispatch_workgroups((next_power_of_two + 15)/ 16, 1, 1);
+                dispatch_1d(&mut compute_pass, next_power_of_two, WG_SIZE);
                 j /= 2;
             }
             k *= 2;
@@ -167,7 +174,7 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.water_simulation.max_particles as u32 + 15)/ 16, 1, 1);
+        dispatch_1d(&mut compute_pass, self.water_simulation.max_particles as u32, WG_SIZE);
 
         // futures::executor::block_on(self.grid.print_buffer(&self.device, &self.queue));
         // calculate_start_indices
@@ -175,7 +182,7 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        dispatch_1d(&mut compute_pass, self.water_simulation.num_particles, WG_SIZE);
         
         // futures::executor::block_on(self.grid.print_buffer2(&self.device, &self.queue));
         // particle density calculation
@@ -183,21 +190,21 @@ impl<'a> Render for State<'a> {
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        dispatch_1d(&mut compute_pass, self.water_simulation.num_particles, WG_SIZE);
     
         //viscosity calculation
         compute_pass.set_pipeline(&self.viscosity_pipeline);
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        dispatch_1d(&mut compute_pass, self.water_simulation.num_particles, WG_SIZE);
         
         // particle force calculation
         compute_pass.set_pipeline(&self.update_position_pipeline);
         compute_pass.set_bind_group(0, &self.particle_bind_group, &[]);
         compute_pass.set_bind_group(1, &self.settings_bind_group, &[]);
         compute_pass.set_bind_group(2, &self.grid.grid_bind_group, &[]);
-        compute_pass.dispatch_workgroups((self.water_simulation.num_particles + 15)/ 16, 1, 1);
+        dispatch_1d(&mut compute_pass, self.water_simulation.num_particles, WG_SIZE);
     
         drop(compute_pass);
     

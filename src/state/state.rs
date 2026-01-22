@@ -24,8 +24,7 @@ use winit::{
     window::Window,
 };
 
-
-
+const NUM_PARTICLES: u32 = 2u32.pow(12);
 const TARGET_FPS: u32 = 2;
 
 pub struct State<'a> {
@@ -113,7 +112,7 @@ impl <'a> State <'a> {
 
         let adapter = wgpu_instance.request_adapter(
             &wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::default(), //high preformance later
+                power_preference: wgpu::PowerPreference::HighPerformance, //high preformance later
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             }
@@ -429,7 +428,7 @@ impl <'a> State <'a> {
 
 
 
-        water_simulation.add_multiple_uniform_particles(2u32.pow(12), &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
+        water_simulation.add_multiple_uniform_particles(NUM_PARTICLES, &queue, &particle_buffer, &position_buffer, &velocity_buffer, &density_buffer);
 
 
         let particle_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {

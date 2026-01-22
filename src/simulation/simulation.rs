@@ -7,6 +7,7 @@ use rayon::prelude::*;
 
 const GRAVITY: f32 = 0.1;
 const COLLISION_DAMPING: f32 = 0.8;
+const MAX_PARTICLES: usize = 2u32.pow(12) as usize;
 
 pub struct WaterSimulation {
     pub particles: Vec<ParticleLl>,
@@ -41,7 +42,7 @@ impl WaterSimulation {
             densities: Vec::new(),
             num_particles: 0,
             num_particles_buffer,
-            max_particles: 2u32.pow(12) as usize,
+            max_particles: MAX_PARTICLES,
             bound_size: [30.0, 20.0], //x, y
             radius: RadiusLl::new(0.08),
             smoothing_radius: 0.1,
