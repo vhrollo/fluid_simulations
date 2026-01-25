@@ -3,7 +3,7 @@ use std::iter;
 use crate::simulation::grid::{Constants, HashCell};
 use crate::state::State;
 
-const WG_SIZE: u32 = 16;
+const WG_SIZE: u32 = 256;
 
 pub trait Render {
     fn render(&mut self) -> Result<(), wgpu::SurfaceError>;

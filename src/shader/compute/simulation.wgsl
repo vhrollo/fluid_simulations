@@ -1,7 +1,7 @@
 // This is a simple 2D SPH simulation shader.
 
-const WG_SIZE_X: u32 = 16;
-const WG_SIZE_Y: u32 = 16;
+const WG_SIZE_X: u32 = 256;
+const WG_SIZE_Y: u32 = 1;
 
 @compute @workgroup_size(WG_SIZE_X, WG_SIZE_Y, 1)
 fn predict_position(@builtin(global_invocation_id) global_id: vec3<u32>) {
@@ -207,15 +207,15 @@ const PI: f32 = 3.14159265359;
 const GRAVITY: f32 = 9.81;
 const BOUNDARY_RESTITUTION: f32 = 0.9; 
 const SMOOTHING_RADIUS: f32 = 1.0;
-const PRESSURE_MULTIPLIER: f32 = 50.0;
-const NEAR_PRESSURE_MULTIPLIER: f32 = 10.0;
+const PRESSURE_MULTIPLIER: f32 = 10.0;
+const NEAR_PRESSURE_MULTIPLIER: f32 = 30.0;
 const TARGET_DENSITY: f32 = 5.0;
 const TIME_STEP: f32 = 1 / 60.0;
 const MASS: f32 = 1.0;
-const VISCOSITY_STRENGTH: f32 = 0.1;
+const VISCOSITY_STRENGTH: f32 = 0.4;
 const delta_time: f32 = 1.0 / 60.0; // the game loop is so bad from winit that we have to hardcode this
 const interaction_radius: f32 = 3.0;
-const interaction_strength: f32 = 1.0;
+const interaction_strength: f32 = 0.8;
 
 
 fn external_forces(pos: ptr<function, vec3<f32>>, vel: ptr<function, vec3<f32>>) -> vec3<f32> {

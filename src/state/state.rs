@@ -174,7 +174,7 @@ impl <'a> State <'a> {
         let bind_groups = vec![diffuse_bind_group, jump_bind_group];
 
         let view = ViewMatrix::new(
-            [0.0, 0.0, -6.0],
+            [0.0, 0.0, -12.0],
             [0.0, 1.0, 0.0],
             90.0,
             0.0,
